@@ -7,7 +7,6 @@ const port = 3000;
 
 const uri = process.env.MONGODB_URI;
 
-console.log("MONGODB_URI:", uri);
 
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -28,7 +27,7 @@ MongoClient.connect(uri, {
 }).then((client) => {
     db = client.db(dbName);
     app.listen(port, () => {
-        console.log(`Szerver fut: http://localhost:${port}`);
+        console.log(`Szerver fut`);
     });
 }).catch((err) => {
     console.error("Nem sikerült csatlakozni a MongoDB-hez:", err);
