@@ -1,7 +1,6 @@
-
 const express = require('express');
-const mongodb = require('mongodb');
-require('dotenv').config()
+const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
+require('dotenv').config();
 
 const app = express();
 const port = 3000;
@@ -10,124 +9,96 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static('public'));
 
-const MongoClient = mongodb.MongoClient;
 const dbName = "list_db";
 const collectionName = "lists";
 
-app.get('/lists', (req, res) => {
-    MongoClient.connect(process.env.URI, {})
-        .then((client) => {
-            const db = client.db(dbName);
-            const collection = db.collection(collectionName);
+let db;
 
-            collection.find().toArray()
-                .then((lists) => {
-                    res.json(lists);
-                })
-                .catch((err) => {
-                    console.error("Hiba az lista lekérdezésekor: " + err);
-                    res.status(500).json({ error: 'Hiba a szerver oldalon' });
-                })
-                .finally(() => {
-                    client.close();
-                });
-        })
-        .catch((err) => {
-            console.error("Hiba a MongoDB-hez csatlakozáskor: " + err);
-            res.status(500).json({ error: 'Hiba a szerver oldalon' });
-        });
+// Egyszeri adatbázis kapcsolat
+MongoClient.connect(process.env.URI, {
+    serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true
+    }
+}).then((client) => {
+    db = client.db(dbName);
+    app.listen(port, () => {
+        console.log(`Szerver fut: http://localhost:${port}`);
+    });
+}).catch((err) => {
+    console.error("Nem sikerült csatlakozni a MongoDB-hez:", err);
 });
 
-app.post('/lists', (req, res) => {
+app.get('/lists', async (req, res) => {
+    try {
+        const lists = await db.collection(collectionName).find().toArray();
+        res.json(lists);
+    } catch (err) {
+        console.error("Hiba a listák lekérdezésekor:", err);
+        res.status(500).json({ error: 'Hiba a szerver oldalon' });
+    }
+});
+
+app.post('/lists', async (req, res) => {
     const list = req.body;
 
-    MongoClient.connect(process.env.URI, {})
-        .then((client) => {
-            const db = client.db(dbName);
-            const collection = db.collection(collectionName);
+    // Egyszerű validáció
+    if (!list.task || typeof list.task !== 'string') {
+        return res.status(400).json({ error: 'Érvénytelen vagy hiányzó "task" mező' });
+    }
 
-            collection.insertOne(list)
-                .then((result) => {
-                    res.status(201).json({ succes: true });
-                })
-                .catch((err) => {
-                    console.error("Hiba a listára hozzáadásakor: " + err);
-                    res.status(500).json({ error: 'Hiba a szerver oldalon' });
-                })
-                .finally(() => {
-                    client.close();
-                });
-        })
-        .catch((err) => {
-            console.error("Hiba a MongoDB-hez csatlakozáskor: " + err);
-            res.status(500).json({ error: 'Hiba a szerver oldalon' });
+    try {
+        await db.collection(collectionName).insertOne({
+            task: list.task,
+            status: list.status || '',
+            date: list.date ? new Date(list.date) : new Date()
         });
+        res.status(201).json({ success: true });
+    } catch (err) {
+        console.error("Hiba a lista hozzáadásakor:", err);
+        res.status(500).json({ error: 'Hiba a szerver oldalon' });
+    }
 });
 
-app.put('/lists/:id', (req, res) => {
+app.put('/lists/:id', async (req, res) => {
     const listId = req.params.id;
     const updatedList = req.body;
 
-    MongoClient.connect(process.env.URI, {})
-        .then((client) => {
-            const db = client.db(dbName);
-            const collection = db.collection(collectionName);
+    if (!updatedList.task || typeof updatedList.task !== 'string') {
+        return res.status(400).json({ error: 'Érvénytelen vagy hiányzó "task" mező' });
+    }
 
-            collection.updateOne(
-                { _id: new mongodb.ObjectId(listId) },
-                { $set: updatedList }
-            ).then((result) => {
-                if (result.modifiedCount === 1) {
-                    return res.status(200).json({ success: true });
-                } else {
-                    return res.status(404).json({ error: 'Nem található a listád' });
-                }
-            })
-                .catch((err) => {
-                    console.error("Hiba a listát frissítésénél: " + err);
-                    res.status(500).json({ error: 'Hiba a szerver oldalon' });
-                })
-                .finally(() => {
-                    client.close();
-                });
-        })
-        .catch((err) => {
-            console.error("Hiba a MongoDB-hez csatlakozáskor: " + err);
-            res.status(500).json({ error: 'Hiba a szerver oldalon' });
-        });
+    try {
+        const result = await db.collection(collectionName).updateOne(
+            { _id: new ObjectId(listId) },
+            { $set: updatedList }
+        );
+
+        if (result.modifiedCount === 1) {
+            res.status(200).json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Nem található a lista' });
+        }
+    } catch (err) {
+        console.error("Hiba a lista frissítésekor:", err);
+        res.status(500).json({ error: 'Hiba a szerver oldalon' });
+    }
 });
 
-app.delete('/lists/:id', (req, res) => {
+app.delete('/lists/:id', async (req, res) => {
     const listId = req.params.id;
 
-    MongoClient.connect(process.env.URI, {})
-        .then((client) => {
-            const db = client.db(dbName);
-            const collection = db.collection(collectionName);
+    try {
+        const result = await db.collection(collectionName).deleteOne({ _id: new ObjectId(listId) });
 
-            collection.deleteOne({ _id: new mongodb.ObjectId(listId) })
-                .then((result) => {
-                    if (result.deletedCount === 1) {
-                        return res.status(200).json({ success: true });
-                    } else {
-                        return res.status(404).json({ error: 'Nem található a listád' });
-                    }
-                })
-                .catch((err) => {
-                    console.error("Hiba a listát törölésénél: " + err);
-                    res.status(500).json({ error: 'Hiba a szerver oldalon' });
-                })
-                .finally(() => {
-                    client.close();
-                });
-        })
-        .catch((err) => {
-            console.error("Hiba a MongoDB-hez csatlakozáskor: " + err);
-            res.status(500).json({ error: 'Hiba a szerver oldalon' });
-        });
-});
-
-
-app.listen(port, () => {
-    console.log(`Server is running on port http://localhost:${port} porton!`);
+        if (result.deletedCount === 1) {
+            res.status(200).json({ success: true });
+        } else {
+            res.status(404).json({ error: 'Nem található a lista' });
+        }
+    } catch (err) {
+        console.error("Hiba a lista törlésekor:", err);
+        res.status(500).json({ error: 'Hiba a szerver oldalon' });
+    }
 });
