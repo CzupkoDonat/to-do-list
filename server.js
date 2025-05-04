@@ -5,6 +5,10 @@ require('dotenv').config();
 const app = express();
 const port = 3000;
 
+const uri = process.env.MONGODB_URI;
+
+console.log("MONGODB_URI:", uri);
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(express.static('public'));
@@ -15,7 +19,7 @@ const collectionName = "lists";
 let db;
 
 // Egyszeri adatbázis kapcsolat
-MongoClient.connect(process.env.URI, {
+MongoClient.connect(uri, {
     serverApi: {
         version: ServerApiVersion.v1,
         strict: true,
